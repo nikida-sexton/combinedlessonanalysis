@@ -4,8 +4,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 import base64
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 import PyPDF2
 import docx
 from io import BytesIO
@@ -118,8 +117,8 @@ def load_instructions():
 
 def format_standard_for_display(standard_id):
     """Format a standard for the dropdown display."""
-    standard = MATH_STANDARDS[standard_id]
-    return f"{standard_id}: {standard['description'][:80]}..." if len(standard['description']) > 80 else f"{standard_id}: {standard['description']}"
+    # Return only the standard ID without the description
+    return standard_id
 
 def format_standard_for_analysis(standard_id):
     """Format a complete standard with all details for analysis."""
@@ -138,14 +137,15 @@ def format_standard_for_analysis(standard_id):
     
     return formatted + "\n"
 
-def analyze_lesson(standards, lesson_text, user_progression_text=None):
+def analyze_lesson(standards, lesson_text):
     """Send lesson information to Gemini API for analysis."""
     api_key = get_api_key()
     if not api_key:
         return None
     
-    client = genai.Client(api_key=api_key)
-    model = "gemini-2.5-flash-preview-05-20"
+    # Initialize the Gemini API
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.5-flash-preview-05-20")
     
     # Load instructions from file
     instructions = load_instructions()
@@ -162,7 +162,7 @@ def analyze_lesson(standards, lesson_text, user_progression_text=None):
     # Get and load required progression documents
     required_docs = get_required_progression_docs(selected_standards)
     
-    # Combine progression documents and user-uploaded content
+    # Combine progression documents content
     progression_text = ""
     
     # Add content from automatically loaded progression documents
@@ -173,11 +173,6 @@ def analyze_lesson(standards, lesson_text, user_progression_text=None):
             progression_text += f"\n--- {doc_name} ---\n"
             # Limit each document to 1000 characters for brevity
             progression_text += content[:1000] + "...\n"
-    
-    # Add user-uploaded progression document if provided
-    if user_progression_text:
-        progression_text += "\n--- User Uploaded Progression Document ---\n"
-        progression_text += user_progression_text[:1000] + "...\n"
     
     # If no progression documents were found or loaded
     if not progression_text:
@@ -196,20 +191,34 @@ def analyze_lesson(standards, lesson_text, user_progression_text=None):
     {lesson_text[:3000]}... (truncated for brevity)
     """
     
-    contents = [
-        types.Content(
-            role="user",
-            parts=[types.Part.from_text(text=prompt)],
-        ),
-    ]
+    # Use the simplified API call with proper generation config
+    try:
+        generation_config = genai.GenerationConfig(max_output_tokens=2048)
+        response = model.generate_content(prompt, generation_config=generation_config)
+        return response.text
+    except Exception as e:
+        st.error(f"API Error: {str(e)}")
+        return None
+
+def display_pdf(pdf_file):
+    """Display the uploaded PDF in the Streamlit app."""
+    # Read the PDF file and convert to base64
+    base64_pdf = base64.b64encode(pdf_file.getvalue()).decode('utf-8')
     
-    response = client.models.generate_content(
-        model=model,
-        contents=contents,
-        generation_config={"max_output_tokens": 2048},
-    )
+    # Embed PDF viewer HTML
+    pdf_display = f"""
+        <iframe
+            src="data:application/pdf;base64,{base64_pdf}"
+            width="100%"
+            height="600"
+            type="application/pdf"
+            frameborder="0"
+            scrolling="auto"
+        ></iframe>
+    """
     
-    return response.text
+    # Display the PDF using HTML
+    st.markdown(pdf_display, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # Streamlit UI
@@ -218,7 +227,7 @@ st.title('📚 Math Lesson Analysis Tool')
 
 st.markdown("""
 This tool analyzes math lessons based on standards and progression documents.
-Upload your files and select standards to get detailed feedback on your lesson.
+Upload your lesson and select standards to get detailed feedback.
 """)
 
 # Sidebar for inputs
@@ -253,65 +262,51 @@ with st.sidebar:
         for std_id in selected_standards:
             standards_formatted += format_standard_for_analysis(std_id)
     
-    # File uploads
-    st.subheader("Upload Files")
-    
+    # File upload (just the lesson PDF)
+    st.subheader("Upload Lesson")
     lesson_pdf = st.file_uploader("Upload Lesson PDF", type="pdf")
-    progression_doc = st.file_uploader("Upload Additional Progression Document (Optional)", 
-                                      type=["pdf", "docx", "txt"],
-                                      help="Upload your own progression document in addition to the standard ones")
+    
+    # Add some space before the generate button
+    st.markdown("---")
+    
+    # Move Generate Analysis button to sidebar bottom
+    generate_analysis = st.button("Generate Analysis", type="primary", use_container_width=True)
 
-# Main content area
+# Main content area - create two columns
 if lesson_pdf is not None:
+    # Create two columns for the main content area
     col1, col2 = st.columns(2)
     
     with col1:
+        # Left column: Display the PDF document
         st.subheader("Lesson PDF")
-        lesson_text = extract_text_from_pdf(lesson_pdf)
-        if lesson_text:
-            st.text_area("Extracted Text Preview", lesson_text[:500] + "...", height=300, disabled=True)
-        else:
-            st.error("Could not extract text from the PDF.")
+        display_pdf(lesson_pdf)
+    
+    # Extract text for analysis (but don't show it)
+    lesson_text = extract_text_from_pdf(lesson_pdf)
+    if not lesson_text:
+        col1.error("Could not extract text from the PDF for analysis.")
     
     with col2:
-        st.subheader("Additional Progression Document")
-        user_progression_text = ""
-        if progression_doc is not None:
-            if progression_doc.type == "application/pdf":
-                user_progression_text = extract_text_from_pdf(progression_doc)
-                if user_progression_text:
-                    st.text_area("Document Preview", user_progression_text[:500] + "...", height=300, disabled=True)
-                else:
-                    st.error("Could not extract text from the document.")
-            elif progression_doc.type == "text/plain":
-                user_progression_text = progression_doc.getvalue().decode("utf-8")
-                st.text_area("Document Preview", user_progression_text[:500] + "...", height=300, disabled=True)
-            elif "docx" in progression_doc.type:
-                try:
-                    doc = docx.Document(BytesIO(progression_doc.getvalue()))
-                    user_progression_text = '\n'.join([para.text for para in doc.paragraphs])
-                    st.text_area("Document Preview", user_progression_text[:500] + "...", height=300, disabled=True)
-                except Exception as e:
-                    st.error(f"Error reading DOCX: {e}")
+        # Right column: Display analysis results
+        st.subheader("Analysis Results")
+        
+        # If the generate button was clicked
+        if generate_analysis:
+            if selected_standards and lesson_text:
+                with st.spinner("Analyzing lesson... This may take a moment."):
+                    analysis = analyze_lesson(standards_formatted, lesson_text)
+                    if analysis:
+                        st.markdown(analysis)
+                    else:
+                        st.error("Analysis failed. Please check your API key and inputs.")
             else:
-                st.error("Unsupported file format.")
-
-    # Analysis section
-    st.header("Lesson Analysis", divider="gray")
-    
-    if st.button("Generate Analysis", type="primary", use_container_width=True):
-        if selected_standards and lesson_text:
-            with st.spinner("Analyzing lesson... This may take a moment."):
-                analysis = analyze_lesson(standards_formatted, lesson_text, user_progression_text)
-                if analysis:
-                    st.markdown(analysis)
+                if not selected_standards:
+                    st.error("Please select at least one math standard.")
                 else:
-                    st.error("Analysis failed. Please check your API key and inputs.")
+                    st.error("Please upload a lesson PDF.")
         else:
-            if not selected_standards:
-                st.error("Please select at least one math standard.")
-            else:
-                st.error("Please upload a lesson PDF.")
+            st.info("Click 'Generate Analysis' in the sidebar to analyze the lesson based on selected standards.")
 else:
     st.info("Please upload a lesson PDF to begin analysis.")
 
