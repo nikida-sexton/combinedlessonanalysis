@@ -8,6 +8,8 @@ import google.generativeai as genai
 import PyPDF2
 import docx
 from io import BytesIO
+import re
+import streamlit.components.v1 as components
 # Import the standards dictionary
 from math_standards import MATH_STANDARDS
 
@@ -39,19 +41,18 @@ def get_api_key():
         st.error("Google API key not found! Please make sure your .env file contains the GOOGLE_API_KEY")
     return api_key
 
-def extract_text_from_pdf(pdf_file):
-    """Extract text content from uploaded PDF file."""
-    if pdf_file is not None:
-        try:
-            pdf_reader = PyPDF2.PdfReader(BytesIO(pdf_file.getvalue()))
+def extract_text_from_pdf(file_path):
+    """Extract text content from PDF file at given path."""
+    try:
+        with open(file_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
             text = ""
             for page in pdf_reader.pages:
                 text += page.extract_text() + "\n"
             return text
-        except Exception as e:
-            st.error(f"Error reading PDF: {e}")
-            return None
-    return None
+    except Exception as e:
+        st.error(f"Error reading PDF: {e}")
+        return None
 
 def get_required_progression_docs(selected_standards):
     """Determine which progression documents to load based on selected standards."""
@@ -171,8 +172,7 @@ def analyze_lesson(standards, lesson_text):
         content = load_progression_document(doc_path)
         if content:
             progression_text += f"\n--- {doc_name} ---\n"
-            # Limit each document to 1000 characters for brevity
-            progression_text += content[:1000] + "...\n"
+            progression_text += content + "...\n"
     
     # If no progression documents were found or loaded
     if not progression_text:
@@ -188,38 +188,91 @@ def analyze_lesson(standards, lesson_text):
     {progression_text}
     
     LESSON:
-    {lesson_text[:3000]}... (truncated for brevity)
+    {lesson_text}... (truncated for brevity)
     """
     
     # Use the simplified API call with proper generation config
     try:
-        generation_config = genai.GenerationConfig(max_output_tokens=2048)
+        generation_config = genai.GenerationConfig(max_output_tokens=8192)
         response = model.generate_content(prompt, generation_config=generation_config)
         return response.text
     except Exception as e:
         st.error(f"API Error: {str(e)}")
         return None
 
-def display_pdf(pdf_file):
-    """Display the uploaded PDF in the Streamlit app."""
-    # Read the PDF file and convert to base64
-    base64_pdf = base64.b64encode(pdf_file.getvalue()).decode('utf-8')
-    
-    # Embed PDF viewer HTML
-    pdf_display = f"""
-        <iframe
-            src="data:application/pdf;base64,{base64_pdf}"
-            width="100%"
-            height="600"
-            type="application/pdf"
-            frameborder="0"
-            scrolling="auto"
-        ></iframe>
-    """
-    
-    # Display the PDF using HTML
-    st.markdown(pdf_display, unsafe_allow_html=True)
+def display_pdf(file_path):
+    """Display the PDF from the given file path with better refresh handling."""
+    try:
+        # Generate a timestamp to ensure unique rendering each time
+        timestamp = str(os.path.getmtime(file_path))
+        
+        with open(file_path, "rb") as f:
+            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+        
+        # Create a container for the PDF display
+        pdf_container = st.empty()
+        
+        # Embed PDF viewer HTML with multiple cache-busting techniques
+        pdf_display = f"""
+            <div style="width:100%; height:600px;">
+                <iframe
+                    src="data:application/pdf;base64,{base64_pdf}#{timestamp}"
+                    width="100%"
+                    height="100%"
+                    type="application/pdf"
+                    frameborder="0"
+                    scrolling="auto"
+                ></iframe>
+            </div>
+        """
+        
+        # Use the container to update the HTML
+        pdf_container.markdown(pdf_display, unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"Error displaying PDF: {e}")
 
+def get_lessons_by_unit():
+    """Scan the lessons directory and organize PDFs by unit."""
+    lessons_dir = Path(__file__).parent / "lessons"
+    if not lessons_dir.exists():
+        st.error(f"Lessons directory not found at {lessons_dir}")
+        return {}
+    
+    # Dictionary to store lessons by unit
+    lessons_by_unit = {}
+    
+    # Regular expression to match lesson file patterns like "6.02.06.pdf"
+    pattern = re.compile(r"(\d+)\.(\d+)\.(\d+)\.pdf")
+    
+    # Scan directory for PDF files
+    for file_path in lessons_dir.glob("*.pdf"):
+        file_name = file_path.name
+        match = pattern.match(file_name)
+        
+        if match:
+            grade, unit, lesson = match.groups()
+            unit_key = f"Unit {int(unit)}"  # Convert "02" to "Unit 2"
+            lesson_number = int(lesson)     # Convert "06" to 6
+            
+            # Create simplified lesson name for display
+            lesson_name = f"Lesson {lesson_number}"
+            
+            # Add to dictionary
+            if unit_key not in lessons_by_unit:
+                lessons_by_unit[unit_key] = []
+            
+            lessons_by_unit[unit_key].append({
+                "name": lesson_name,
+                "path": str(file_path),
+                "number": lesson_number,    # Store lesson number for sorting
+                "full_name": file_name      # Keep original filename for reference
+            })
+    
+    # Sort units and lessons by numerical order
+    return {
+        unit: sorted(lessons, key=lambda x: x["number"])
+        for unit, lessons in sorted(lessons_by_unit.items())
+    }
 # -----------------------------------------------------------------------------
 # Streamlit UI
 
@@ -227,17 +280,38 @@ st.title('📚 Math Lesson Analysis Tool')
 
 st.markdown("""
 This tool analyzes math lessons based on standards and progression documents.
-Upload your lesson and select standards to get detailed feedback.
+Select a lesson and standards to get detailed feedback.
 """)
+
+# Get lessons organized by unit
+lessons_by_unit = get_lessons_by_unit()
 
 # Sidebar for inputs
 with st.sidebar:
-    st.header("Lesson Inputs")
+    st.header("Lesson Selection")
+    
+    # Unit selection
+    units = list(lessons_by_unit.keys())
+    if units:
+        selected_unit = st.selectbox("Select Unit", units)
+        
+        # Lesson selection within the unit
+        lessons = lessons_by_unit[selected_unit]
+        lesson_options = [lesson["name"] for lesson in lessons]
+        selected_lesson_name = st.selectbox("Select Lesson", lesson_options)
+        
+        # Get the selected lesson path
+        selected_lesson_path = next(
+            (lesson["path"] for lesson in lessons if lesson["name"] == selected_lesson_name),
+            None
+        )
+    else:
+        st.error("No lessons found in the lessons directory.")
+        selected_lesson_path = None
+    
+    st.header("Standards Selection")
     
     # Math Standards Multi-select Dropdown
-    st.subheader("Math Standards")
-    
-    # Create sorted list of standard IDs
     standard_options = sorted(list(MATH_STANDARDS.keys()))
     
     # Create multiselect dropdown for standards
@@ -262,30 +336,34 @@ with st.sidebar:
         for std_id in selected_standards:
             standards_formatted += format_standard_for_analysis(std_id)
     
-    # File upload (just the lesson PDF)
-    st.subheader("Upload Lesson")
-    lesson_pdf = st.file_uploader("Upload Lesson PDF", type="pdf")
-    
     # Add some space before the generate button
     st.markdown("---")
     
-    # Move Generate Analysis button to sidebar bottom
+    # Generate Analysis button
     generate_analysis = st.button("Generate Analysis", type="primary", use_container_width=True)
 
 # Main content area - create two columns
-if lesson_pdf is not None:
+if selected_lesson_path:
     # Create two columns for the main content area
     col1, col2 = st.columns(2)
     
-    with col1:
-        # Left column: Display the PDF document
-        st.subheader("Lesson PDF")
-        display_pdf(lesson_pdf)
-    
     # Extract text for analysis (but don't show it)
-    lesson_text = extract_text_from_pdf(lesson_pdf)
+    lesson_text = extract_text_from_pdf(selected_lesson_path)
     if not lesson_text:
-        col1.error("Could not extract text from the PDF for analysis.")
+        with col1:
+            st.error("Could not extract text from the PDF for analysis.")
+    
+    # Get selected lesson info for display
+    selected_lesson = next(
+        (lesson for lesson in lessons_by_unit[selected_unit] if lesson["path"] == selected_lesson_path),
+        None
+    )
+    lesson_display_name = f"{selected_lesson['name']} ({selected_lesson['full_name']})" if selected_lesson else f"Lesson: {os.path.basename(selected_lesson_path)}"
+    
+    with col1:
+        # Left column: Display the PDF document immediately
+        st.subheader(f"{lesson_display_name}")
+        display_pdf(selected_lesson_path)
     
     with col2:
         # Right column: Display analysis results
@@ -294,6 +372,7 @@ if lesson_pdf is not None:
         # If the generate button was clicked
         if generate_analysis:
             if selected_standards and lesson_text:
+                # Show the analysis
                 with st.spinner("Analyzing lesson... This may take a moment."):
                     analysis = analyze_lesson(standards_formatted, lesson_text)
                     if analysis:
@@ -304,11 +383,11 @@ if lesson_pdf is not None:
                 if not selected_standards:
                     st.error("Please select at least one math standard.")
                 else:
-                    st.error("Please upload a lesson PDF.")
+                    st.error("Could not analyze the selected lesson.")
         else:
             st.info("Click 'Generate Analysis' in the sidebar to analyze the lesson based on selected standards.")
 else:
-    st.info("Please upload a lesson PDF to begin analysis.")
+    st.info("Please select a unit and lesson to begin analysis.")
 
 # Footer
 st.markdown("---")
