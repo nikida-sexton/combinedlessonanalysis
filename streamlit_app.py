@@ -231,15 +231,15 @@ def display_pdf(file_path):
     except Exception as e:
         st.error(f"Error displaying PDF: {e}")
 
-def get_lessons_by_unit():
-    """Scan the lessons directory and organize PDFs by unit."""
+def get_lessons_by_grade_and_unit():
+    """Scan the lessons directory and organize PDFs by grade and unit."""
     lessons_dir = Path(__file__).parent / "lessons"
     if not lessons_dir.exists():
         st.error(f"Lessons directory not found at {lessons_dir}")
         return {}
     
-    # Dictionary to store lessons by unit
-    lessons_by_unit = {}
+    # Dictionary to store lessons by grade and unit
+    lessons_by_grade_and_unit = {}
     
     # Regular expression to match lesson file patterns like "6.02.06.pdf"
     pattern = re.compile(r"(\d+)\.(\d+)\.(\d+)\.pdf")
@@ -251,27 +251,33 @@ def get_lessons_by_unit():
         
         if match:
             grade, unit, lesson = match.groups()
-            unit_key = f"Unit {int(unit)}"  # Convert "02" to "Unit 2"
-            lesson_number = int(lesson)     # Convert "06" to 6
+            grade_key = f"Grade {int(grade)}"  # Convert "6" to "Grade 6"
+            unit_key = f"Unit {int(unit)}"    # Convert "02" to "Unit 2"
+            lesson_number = int(lesson)      # Convert "06" to 6
             
             # Create simplified lesson name for display
             lesson_name = f"Lesson {lesson_number}"
             
             # Add to dictionary
-            if unit_key not in lessons_by_unit:
-                lessons_by_unit[unit_key] = []
+            if grade_key not in lessons_by_grade_and_unit:
+                lessons_by_grade_and_unit[grade_key] = {}
+            if unit_key not in lessons_by_grade_and_unit[grade_key]:
+                lessons_by_grade_and_unit[grade_key][unit_key] = []
             
-            lessons_by_unit[unit_key].append({
+            lessons_by_grade_and_unit[grade_key][unit_key].append({
                 "name": lesson_name,
                 "path": str(file_path),
                 "number": lesson_number,    # Store lesson number for sorting
                 "full_name": file_name      # Keep original filename for reference
             })
     
-    # Sort units and lessons by numerical order
+    # Sort grades, units, and lessons by numerical order
     return {
-        unit: sorted(lessons, key=lambda x: x["number"])
-        for unit, lessons in sorted(lessons_by_unit.items())
+        grade: {
+            unit: sorted(lessons, key=lambda x: x["number"])
+            for unit, lessons in sorted(units.items())
+        }
+        for grade, units in sorted(lessons_by_grade_and_unit.items())
     }
 # -----------------------------------------------------------------------------
 # Streamlit UI
@@ -283,28 +289,36 @@ This tool analyzes math lessons based on standards and progression documents.
 Select a lesson and standards to get detailed feedback.
 """)
 
-# Get lessons organized by unit
-lessons_by_unit = get_lessons_by_unit()
+# Get lessons organized by grade and unit
+lessons_by_grade_and_unit = get_lessons_by_grade_and_unit()
 
 # Sidebar for inputs
 with st.sidebar:
     st.header("Lesson Selection")
     
-    # Unit selection
-    units = list(lessons_by_unit.keys())
-    if units:
-        selected_unit = st.selectbox("Select Unit", units)
+    # Grade selection
+    grades = list(lessons_by_grade_and_unit.keys())
+    if grades:
+        selected_grade = st.selectbox("Select Grade", grades)
         
-        # Lesson selection within the unit
-        lessons = lessons_by_unit[selected_unit]
-        lesson_options = [lesson["name"] for lesson in lessons]
-        selected_lesson_name = st.selectbox("Select Lesson", lesson_options)
-        
-        # Get the selected lesson path
-        selected_lesson_path = next(
-            (lesson["path"] for lesson in lessons if lesson["name"] == selected_lesson_name),
-            None
-        )
+        # Unit selection within the selected grade
+        units = list(lessons_by_grade_and_unit[selected_grade].keys())
+        if units:
+            selected_unit = st.selectbox("Select Unit", units)
+            
+            # Lesson selection within the selected unit
+            lessons = lessons_by_grade_and_unit[selected_grade][selected_unit]
+            lesson_options = [lesson["name"] for lesson in lessons]
+            selected_lesson_name = st.selectbox("Select Lesson", lesson_options)
+            
+            # Get the selected lesson path
+            selected_lesson_path = next(
+                (lesson["path"] for lesson in lessons if lesson["name"] == selected_lesson_name),
+                None
+            )
+        else:
+            st.error("No units found for the selected grade.")
+            selected_lesson_path = None
     else:
         st.error("No lessons found in the lessons directory.")
         selected_lesson_path = None
@@ -355,14 +369,14 @@ if selected_lesson_path:
     
     # Get selected lesson info for display
     selected_lesson = next(
-        (lesson for lesson in lessons_by_unit[selected_unit] if lesson["path"] == selected_lesson_path),
+        (lesson for lesson in lessons_by_grade_and_unit[selected_grade][selected_unit] if lesson["path"] == selected_lesson_path),
         None
     )
     lesson_display_name = f"{selected_lesson['name']} ({selected_lesson['full_name']})" if selected_lesson else f"Lesson: {os.path.basename(selected_lesson_path)}"
     
     with col1:
         # Left column: Display the PDF document immediately
-        st.subheader(f"{lesson_display_name}")
+        st.subheader(f"{selected_grade} - {selected_unit} - {lesson_display_name}")
         display_pdf(selected_lesson_path)
     
     with col2:
@@ -387,7 +401,7 @@ if selected_lesson_path:
         else:
             st.info("Click 'Generate Analysis' in the sidebar to analyze the lesson based on selected standards.")
 else:
-    st.info("Please select a unit and lesson to begin analysis.")
+    st.info("Please select a grade, unit, and lesson to begin analysis.")
 
 # Footer
 st.markdown("---")
