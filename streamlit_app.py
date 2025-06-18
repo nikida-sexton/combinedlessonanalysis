@@ -103,12 +103,12 @@ def load_instructions():
         else:
             st.warning("instructions.txt not found. Using default instructions.")
             return """
-            Please analyze the following lesson based on the provided math standards and progression document.
+            Please analyze the following combination of lessons based on the provided math standards and progression document.
             
             Provide a comprehensive analysis including:
-            1. How well the lesson addresses the specified standards
+            1. How well the lessons addresses the specified standards
             2. Alignment with the progression document
-            3. Strengths of the lesson
+            3. Strengths of the lessons
             4. Areas for improvement
             5. Suggested modifications or extensions
             """
@@ -296,32 +296,33 @@ lessons_by_grade_and_unit = get_lessons_by_grade_and_unit()
 with st.sidebar:
     st.header("Lesson Selection")
     
-    # Grade selection
-    grades = list(lessons_by_grade_and_unit.keys())
-    if grades:
-        selected_grade = st.selectbox("Select Grade", grades)
-        
-        # Unit selection within the selected grade
-        units = list(lessons_by_grade_and_unit[selected_grade].keys())
-        if units:
-            selected_unit = st.selectbox("Select Unit", units)
-            
-            # Lesson selection within the selected unit
-            lessons = lessons_by_grade_and_unit[selected_grade][selected_unit]
-            lesson_options = [lesson["name"] for lesson in lessons]
-            selected_lesson_name = st.selectbox("Select Lesson", lesson_options)
-            
-            # Get the selected lesson path
-            selected_lesson_path = next(
-                (lesson["path"] for lesson in lessons if lesson["name"] == selected_lesson_name),
-                None
-            )
-        else:
-            st.error("No units found for the selected grade.")
-            selected_lesson_path = None
-    else:
-        st.error("No lessons found in the lessons directory.")
-        selected_lesson_path = None
+    # Flatten the lessons structure for multi-selection
+    all_lessons = []
+    for grade, units in lessons_by_grade_and_unit.items():
+        for unit, lessons in units.items():
+            for lesson in lessons:
+                all_lessons.append({
+                    "grade": grade,
+                    "unit": unit,
+                    "name": lesson["name"],
+                    "path": lesson["path"],
+                    "full_name": lesson["full_name"]
+                })
+    
+    # Create a display name for each lesson
+    lesson_options = [
+        f"{lesson['grade']} - {lesson['unit']} - {lesson['name']} ({lesson['full_name']})"
+        for lesson in all_lessons
+    ]
+    
+    # Multi-selection for lessons
+    selected_lesson_display_names = st.multiselect("Select Lessons", lesson_options)
+    
+    # Get the paths of the selected lessons
+    selected_lesson_paths = [
+        lesson["path"] for lesson in all_lessons
+        if f"{lesson['grade']} - {lesson['unit']} - {lesson['name']} ({lesson['full_name']})" in selected_lesson_display_names
+    ]
     
     st.header("Standards Selection")
     
@@ -357,51 +358,42 @@ with st.sidebar:
     generate_analysis = st.button("Generate Analysis", type="primary", use_container_width=True)
 
 # Main content area - create two columns
-if selected_lesson_path:
-    # Create two columns for the main content area
-    col1, col2 = st.columns(2)
-    
-    # Extract text for analysis (but don't show it)
-    lesson_text = extract_text_from_pdf(selected_lesson_path)
-    if not lesson_text:
-        with col1:
-            st.error("Could not extract text from the PDF for analysis.")
-    
-    # Get selected lesson info for display
-    selected_lesson = next(
-        (lesson for lesson in lessons_by_grade_and_unit[selected_grade][selected_unit] if lesson["path"] == selected_lesson_path),
-        None
-    )
-    lesson_display_name = f"{selected_lesson['name']} ({selected_lesson['full_name']})" if selected_lesson else f"Lesson: {os.path.basename(selected_lesson_path)}"
-    
-    with col1:
-        # Left column: Display the PDF document immediately
-        st.subheader(f"{selected_grade} - {selected_unit} - {lesson_display_name}")
-        display_pdf(selected_lesson_path)
-    
-    with col2:
-        # Right column: Display analysis results
-        st.subheader("Analysis Results")
-        
-        # If the generate button was clicked
-        if generate_analysis:
-            if selected_standards and lesson_text:
-                # Show the analysis
-                with st.spinner("Analyzing lesson... This may take a moment."):
-                    analysis = analyze_lesson(standards_formatted, lesson_text)
-                    if analysis:
-                        st.markdown(analysis)
-                    else:
-                        st.error("Analysis failed. Please check your API key and inputs.")
-            else:
-                if not selected_standards:
-                    st.error("Please select at least one math standard.")
-                else:
-                    st.error("Could not analyze the selected lesson.")
+if selected_lesson_paths:
+    # Combine text from all selected lessons
+    combined_lesson_text = ""
+    for lesson_path in selected_lesson_paths:
+        lesson_text = extract_text_from_pdf(lesson_path)
+        if lesson_text:
+            combined_lesson_text += lesson_text + "\n\n"  # Add spacing between lessons
         else:
-            st.info("Click 'Generate Analysis' in the sidebar to analyze the lesson based on selected standards.")
+            st.error(f"Could not extract text from the PDF: {lesson_path}")
+    
+    # Display the combined lesson information
+    st.subheader("Selected Lessons")
+    for lesson_path in selected_lesson_paths:
+        selected_lesson = next(
+            (lesson for lesson in all_lessons if lesson["path"] == lesson_path),
+            None
+        )
+        lesson_display_name = f"{selected_lesson['grade']} - {selected_lesson['unit']} - {selected_lesson['name']} ({selected_lesson['full_name']})" if selected_lesson else f"Lesson: {os.path.basename(lesson_path)}"
+        st.markdown(f"- {lesson_display_name}")
+    
+    # Analyze the combined lesson text
+    st.subheader("Analysis Results")
+    if selected_standards and combined_lesson_text.strip():
+        with st.spinner("Analyzing combined lessons... This may take a moment."):
+            analysis = analyze_lesson(standards_formatted, combined_lesson_text)
+            if analysis:
+                st.markdown(analysis)
+            else:
+                st.error("Analysis failed. Please check your API key and inputs.")
+    else:
+        if not selected_standards:
+            st.error("Please select at least one math standard.")
+        else:
+            st.error("Could not analyze the selected lessons.")
 else:
-    st.info("Please select a grade, unit, and lesson to begin analysis.")
+    st.info("Please select at least one lesson to begin analysis.")
 
 # Footer
 st.markdown("---")
