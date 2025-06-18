@@ -10,8 +10,6 @@ import docx
 from io import BytesIO
 import re
 import streamlit.components.v1 as components
-# Import the standards dictionary
-from math_standards import MATH_STANDARDS
 
 # Load environment variables
 load_dotenv()
@@ -22,14 +20,6 @@ st.set_page_config(
     page_icon=':books:', # This is an emoji shortcode
     layout="wide"
 )
-
-# Map standard domains to their progression document paths
-PROGRESSION_DOCS = {
-    "MA.6.NSO": "data/6-8 NSO Progression.docx",
-    "MA.6.AR": "data/6-8 AR Progression.docx",
-    "MA.6.GR": "data/6-8 GR Progression.docx",
-    "MA.6.DP": "data/6-8 DP Progression.docx"
-}
 
 # -----------------------------------------------------------------------------
 # Helper functions for API and PDF handling
@@ -54,44 +44,6 @@ def extract_text_from_pdf(file_path):
         st.error(f"Error reading PDF: {e}")
         return None
 
-def get_required_progression_docs(selected_standards):
-    """Determine which progression documents to load based on selected standards."""
-    required_docs = set()
-    
-    for standard_id in selected_standards:
-        # Extract the domain prefix (e.g., "MA.6.NSO" from "MA.6.NSO.1.1")
-        parts = standard_id.split('.')
-        if len(parts) >= 3:
-            domain_prefix = '.'.join(parts[:3])
-            if domain_prefix in PROGRESSION_DOCS:
-                required_docs.add(PROGRESSION_DOCS[domain_prefix])
-    
-    return list(required_docs)
-
-def load_progression_document(doc_path):
-    """Load content from a progression document."""
-    try:
-        if doc_path.endswith('.docx'):
-            # Load DOCX file
-            doc = docx.Document(doc_path)
-            return '\n'.join([para.text for para in doc.paragraphs])
-        elif doc_path.endswith('.pdf'):
-            # Load PDF file
-            with open(doc_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                text = ""
-                for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n"
-                return text
-        elif doc_path.endswith('.txt'):
-            # Load TXT file
-            with open(doc_path, 'r', encoding='utf-8') as file:
-                return file.read()
-    except Exception as e:
-        st.warning(f"Error loading {doc_path}: {e}")
-        return f"Error loading document: {e}"
-    
-    return ""
 
 def load_instructions():
     """Load instructions from instructions.txt file."""
@@ -103,11 +55,11 @@ def load_instructions():
         else:
             st.warning("instructions.txt not found. Using default instructions.")
             return """
-            Please analyze the following combination of lessons based on the provided math standards and progression document.
+            Please analyze the following combination of lessons based on the provided math standards.
             
             Provide a comprehensive analysis including:
             1. How well the lessons addresses the specified standards
-            2. Alignment with the progression document
+            2. Alignment with the provided standard
             3. Strengths of the lessons
             4. Areas for improvement
             5. Suggested modifications or extensions
@@ -159,24 +111,7 @@ def analyze_lesson(standards, lesson_text):
         if line and ':' in line:
             standard_id = line.split(':')[0].strip()
             selected_standards.append(standard_id)
-    
-    # Get and load required progression documents
-    required_docs = get_required_progression_docs(selected_standards)
-    
-    # Combine progression documents content
-    progression_text = ""
-    
-    # Add content from automatically loaded progression documents
-    for doc_path in required_docs:
-        doc_name = os.path.basename(doc_path)
-        content = load_progression_document(doc_path)
-        if content:
-            progression_text += f"\n--- {doc_name} ---\n"
-            progression_text += content + "...\n"
-    
-    # If no progression documents were found or loaded
-    if not progression_text:
-        progression_text = "No progression documents available."
+
     
     prompt = f"""
     {instructions}
@@ -184,8 +119,6 @@ def analyze_lesson(standards, lesson_text):
     MATH STANDARDS:
     {standards}
     
-    PROGRESSION DOCUMENTS:
-    {progression_text}
     
     LESSON:
     {lesson_text}... (truncated for brevity)
@@ -285,7 +218,7 @@ def get_lessons_by_grade_and_unit():
 st.title('📚 Math Lesson Analysis Tool')
 
 st.markdown("""
-This tool analyzes math lessons based on standards and progression documents.
+This tool analyzes math lessons based on standards.
 Select a lesson and standards to get detailed feedback.
 """)
 
@@ -324,32 +257,13 @@ with st.sidebar:
         if f"{lesson['grade']} - {lesson['unit']} - {lesson['name']} ({lesson['full_name']})" in selected_lesson_display_names
     ]
     
-    st.header("Standards Selection")
+    st.header("Standards Input")
     
-    # Math Standards Multi-select Dropdown
-    standard_options = sorted(list(MATH_STANDARDS.keys()))
-    
-    # Create multiselect dropdown for standards
-    selected_standards = st.multiselect(
-        "Select standards for analysis:",
-        options=standard_options,
-        format_func=format_standard_for_display
+    # Replace the dropdown with a text area for user input
+    user_provided_standards = st.text_area(
+        "Enter math standards for analysis (one standard per line):",
+        placeholder="Example:\n1. Standard ID: Description\n2. Standard ID: Description"
     )
-    
-    # Display which progression documents will be used
-    if selected_standards:
-        required_docs = get_required_progression_docs(selected_standards)
-        if required_docs:
-            st.subheader("Progression Documents")
-            for doc_path in required_docs:
-                doc_name = os.path.basename(doc_path)
-                st.write(f"✓ {doc_name}")
-    
-    # Format selected standards as text for analysis
-    standards_formatted = ""
-    if selected_standards:
-        for std_id in selected_standards:
-            standards_formatted += format_standard_for_analysis(std_id)
     
     # Add some space before the generate button
     st.markdown("---")
@@ -380,18 +294,27 @@ if selected_lesson_paths:
     
     # Analyze the combined lesson text
     st.subheader("Analysis Results")
-    if selected_standards and combined_lesson_text.strip():
+    if user_provided_standards.strip() and combined_lesson_text.strip():
         with st.spinner("Analyzing combined lessons... This may take a moment."):
-            analysis = analyze_lesson(standards_formatted, combined_lesson_text)
+            analysis = analyze_lesson(user_provided_standards, combined_lesson_text)
             if analysis:
                 st.markdown(analysis)
             else:
                 st.error("Analysis failed. Please check your API key and inputs.")
     else:
-        if not selected_standards:
-            st.error("Please select at least one math standard.")
+        if not user_provided_standards.strip():
+            st.error("Please input at least one math standard.")
         else:
             st.error("Could not analyze the selected lessons.")
+
+    # Display PDFs in tabs
+    if selected_lesson_paths:
+        st.subheader("Selected Lesson PDFs")
+        tabs = st.tabs([os.path.basename(path) for path in selected_lesson_paths])
+        for tab, lesson_path in zip(tabs, selected_lesson_paths):
+            with tab:
+                st.markdown(f"### {os.path.basename(lesson_path)}")
+                display_pdf(lesson_path)
 else:
     st.info("Please select at least one lesson to begin analysis.")
 
