@@ -10,6 +10,7 @@ import docx
 from io import BytesIO
 import re
 import streamlit.components.v1 as components
+import fitz  # PyMuPDF
 
 # Load environment variables
 load_dotenv()
@@ -134,33 +135,27 @@ def analyze_lesson(standards, lesson_text):
         return None
 
 def display_pdf(file_path):
-    """Display the PDF from the given file path with better refresh handling."""
+    """Display the PDF from the given file path with better error handling."""
     try:
-        # Generate a timestamp to ensure unique rendering each time
-        timestamp = str(os.path.getmtime(file_path))
-        
-        with open(file_path, "rb") as f:
+        # Reprocess the PDF to ensure compatibility
+        processed_path = reprocess_pdf(file_path)
+        if not processed_path:
+            return
+
+        # Read the reprocessed PDF file and encode it in base64
+        with open(processed_path, "rb") as f:
             base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-        
-        # Create a container for the PDF display
-        pdf_container = st.empty()
-        
-        # Embed PDF viewer HTML with multiple cache-busting techniques
+
+        # Embed the PDF in an iframe
         pdf_display = f"""
-            <div style="width:100%; height:600px;">
-                <iframe
-                    src="data:application/pdf;base64,{base64_pdf}#{timestamp}"
-                    width="100%"
-                    height="100%"
-                    type="application/pdf"
-                    frameborder="0"
-                    scrolling="auto"
-                ></iframe>
-            </div>
+            <iframe
+                src="data:application/pdf;base64,{base64_pdf}"
+                width="100%"
+                height="600px"
+                frameborder="0"
+            ></iframe>
         """
-        
-        # Use the container to update the HTML
-        pdf_container.markdown(pdf_display, unsafe_allow_html=True)
+        st.markdown(pdf_display, unsafe_allow_html=True)
     except Exception as e:
         st.error(f"Error displaying PDF: {e}")
 
@@ -212,6 +207,17 @@ def get_lessons_by_grade_and_unit():
         }
         for grade, units in sorted(lessons_by_grade_and_unit.items())
     }
+def reprocess_pdf(file_path):
+    """Reprocess the PDF to ensure compatibility."""
+    try:
+        doc = fitz.open(file_path)
+        output_path = file_path.replace(".pdf", "_processed.pdf")
+        doc.save(output_path)
+        doc.close()
+        return output_path
+    except Exception as e:
+        st.error(f"Error reprocessing PDF: {e}")
+        return None
 # -----------------------------------------------------------------------------
 # Streamlit UI
 
@@ -271,52 +277,53 @@ with st.sidebar:
     # Generate Analysis button
     generate_analysis = st.button("Generate Analysis", type="primary", use_container_width=True)
 
-# Main content area - create two columns
-if selected_lesson_paths:
-    # Combine text from all selected lessons
-    combined_lesson_text = ""
-    for lesson_path in selected_lesson_paths:
-        lesson_text = extract_text_from_pdf(lesson_path)
-        if lesson_text:
-            combined_lesson_text += lesson_text + "\n\n"  # Add spacing between lessons
-        else:
-            st.error(f"Could not extract text from the PDF: {lesson_path}")
-    
-    # Display the combined lesson information
-    st.subheader("Selected Lessons")
-    for lesson_path in selected_lesson_paths:
-        selected_lesson = next(
-            (lesson for lesson in all_lessons if lesson["path"] == lesson_path),
-            None
-        )
-        lesson_display_name = f"{selected_lesson['grade']} - {selected_lesson['unit']} - {selected_lesson['name']} ({selected_lesson['full_name']})" if selected_lesson else f"Lesson: {os.path.basename(lesson_path)}"
-        st.markdown(f"- {lesson_display_name}")
-    
-    # Analyze the combined lesson text
-    st.subheader("Analysis Results")
-    if user_provided_standards.strip() and combined_lesson_text.strip():
-        with st.spinner("Analyzing combined lessons... This may take a moment."):
-            analysis = analyze_lesson(user_provided_standards, combined_lesson_text)
-            if analysis:
-                st.markdown(analysis)
-            else:
-                st.error("Analysis failed. Please check your API key and inputs.")
-    else:
-        if not user_provided_standards.strip():
-            st.error("Please input at least one math standard.")
-        else:
-            st.error("Could not analyze the selected lessons.")
-
-    # Display PDFs in tabs
+# Main content area - only run when "Generate Analysis" is clicked
+if generate_analysis:
     if selected_lesson_paths:
-        st.subheader("Selected Lesson PDFs")
-        tabs = st.tabs([os.path.basename(path) for path in selected_lesson_paths])
-        for tab, lesson_path in zip(tabs, selected_lesson_paths):
-            with tab:
-                st.markdown(f"### {os.path.basename(lesson_path)}")
-                display_pdf(lesson_path)
-else:
-    st.info("Please select at least one lesson to begin analysis.")
+        # Combine text from all selected lessons
+        combined_lesson_text = ""
+        for lesson_path in selected_lesson_paths:
+            lesson_text = extract_text_from_pdf(lesson_path)
+            if lesson_text:
+                combined_lesson_text += lesson_text + "\n\n"  # Add spacing between lessons
+            else:
+                st.error(f"Could not extract text from the PDF: {lesson_path}")
+
+        # Display the combined lesson information
+        st.subheader("Selected Lessons")
+        for lesson_path in selected_lesson_paths:
+            selected_lesson = next(
+                (lesson for lesson in all_lessons if lesson["path"] == lesson_path),
+                None
+            )
+            lesson_display_name = f"{selected_lesson['grade']} - {selected_lesson['unit']} - {selected_lesson['name']} ({selected_lesson['full_name']})" if selected_lesson else f"Lesson: {os.path.basename(lesson_path)}"
+            st.markdown(f"- {lesson_display_name}")
+
+        # Analyze the combined lesson text
+        st.subheader("Analysis Results")
+        if user_provided_standards.strip() and combined_lesson_text.strip():
+            with st.spinner("Analyzing combined lessons... This may take a moment."):
+                analysis = analyze_lesson(user_provided_standards, combined_lesson_text)
+                if analysis:
+                    st.markdown(analysis)
+                else:
+                    st.error("Analysis failed. Please check your API key and inputs.")
+        else:
+            if not user_provided_standards.strip():
+                st.error("Please input at least one math standard.")
+            else:
+                st.error("Could not analyze the selected lessons.")
+
+        # Display PDFs in tabs
+        if selected_lesson_paths:
+            st.subheader("Selected Lesson PDFs")
+            tabs = st.tabs([os.path.basename(path) for path in selected_lesson_paths])
+            for tab, lesson_path in zip(tabs, selected_lesson_paths):
+                with tab:
+                    st.markdown(f"### {os.path.basename(lesson_path)}")
+                    display_pdf(lesson_path)
+    else:
+        st.info("Please select at least one lesson to begin analysis.")
 
 # Footer
 st.markdown("---")
