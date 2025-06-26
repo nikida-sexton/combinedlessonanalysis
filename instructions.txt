@@ -1,86 +1,62 @@
-# Context
-You are reviewing a **collection of lessons** mapped to a single academic standard (or tightly related cluster).  
-Your task is to decide whether, taken together, the lessons **fully** address every intent, breadth, and depth element of that standard or **partially** address it—and to pinpoint any remaining gaps.
+# Standards Coverage Analysis Guide  
 
-# Objective
+Use this section to judge **how completely** the lesson set addresses every element of the target standard and to pinpoint any gaps.
 
-| Collection Flag     | Meaning                                                                                                                        |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| **Fully Covered**   | Across the full set, every requirement of the standard is met **and** no lesson conflicts with the intent or content limits.  |
-| **Partially Covered** | At least one requirement of the standard is missing, under-emphasized, or treated superficially—even if no direct conflicts exist. |
-| **Remove Collection** | The entire set is unnecessary (e.g., the standard is already met by another collection) **or** the lessons are fundamentally mis-aligned. |
+---
 
-*Assumption: Each lesson is presumed aligned unless evidence shows a conflict or gap.*
+## 1. Prepare a Requirement List  
+1. Read the full standard, clarifications, and examples
+2. Bullet every discrete requirement—concepts, skills, representations, contexts, and grade-level limits.  
+3. Keep this list visible while evaluating lessons.
 
-# Steps
+---
 
-## 1. Standard Deep-Dive
-1. Read the standard, clarifications, examples, and progression documents.  
-2. Bullet out **all discrete requirements** (concepts, skills, representations, contexts, grade-level limits).  
-3. Keep this list visible—it drives every judgment.
+## 2. Map Lessons to Requirements  
+| Requirement | Lesson(s) Addressing It | Evidence / Notes | Coverage Status |
+|-------------|-------------------------|------------------|-----------------|
+| e.g., “Solve multi-step word problems with unit fractions.” | Lesson 2, Lesson 4 | Lesson 2 models; Lesson 4 practice set | ✔ Met |
+| *(repeat for each requirement)* |  |  | ◑ Partially Met / ✗ Not Met |
 
-## 2. Lesson-by-Lesson Check
-For **each lesson**:
+**Coverage Status codes**  
+- **✔ Met** – requirement is fully addressed somewhere in the collection.  
+- **◑ Partially Met** – requirement is present but depth, variety, or representation is insufficient.  
+- **✗ Not Met** – requirement is absent.
 
-- Identify which requirement(s) it addresses.  
-- Flag the lesson: **Keep as is / Needs revision / Remove**  
-- Mark **Needs revision** only if the lesson  
-  - exceeds or falls below scope,  
-  - omits a core skill / representation it claims to cover, **or**  
-  - contains misconceptions or errors.
+---
 
-## 3. Collection-Level Coverage Analysis
-- Build a quick matrix matching requirements → lessons.  
-- Classify each requirement as **Met ✔**, **Partially Met ◑**, or **Not Met ✗**.  
-- Note redundancies (several lessons on the same niche) and gaps.
+## 3. Identify Redundancies & Gaps  
+* **Redundancies**: Note any requirements covered by multiple lessons with identical approach or examples.  
+* **Gaps**: List requirements marked ◑ or ✗.
 
-## 4. Determine Collection Flag
-- **Fully Covered** → every requirement **Met**, no conflicts.  
-- **Partially Covered** → any requirement **Partially / Not Met**, but set is salvageable.  
-- **Remove Collection** → pervasive mis-alignment or fully duplicated elsewhere.
+---
 
-## 5. Explain Missing Pieces *(if Partial)*
-For each **Partially / Not Met** requirement, state **exactly** what content, skill, representation, or depth is lacking and cite the standard’s wording.
+## 4. Explain Missing Elements (for each Gap)  
+- Quote or paraphrase the requirement.  
+- State **exactly** what is missing (content, skill, representation, context, depth).  
+- Example:  
+  > **Requirement:** “Students create line plots to display measurement data.”  
+  > **Gap:** No lesson asks students to generate their own line plots—only interpret pre-made ones.
 
-## 6. Action Plan
-For **Partially Covered** collections:
+---
 
-- **Add** a new lesson / activity.  
-- **Revise** specific lesson sections.  
-- **Remove** redundant / conflicting lessons.  
+## 5. Summarize Overall Coverage  
+Provide a concise narrative or bullet list answering:  
+- Which requirements are fully met?  
+- Which are partially or not met, and why?  
+- Where does excessive overlap occur?
 
-For each action, specify **where** and **what minimal change** is needed.  
-For **Remove Collection**, give a concise justification.
+---
 
-# Style Guide
-- **Voice:** Expert curriculum reviewer—precise, evidence-based, plain language.  
-- **Cite** standards by code or phrase snippets for traceability.  
-- Use **concrete examples** (e.g., “include bivariate data scatter plots”), not vague advice.  
-- Be **concise**—prefer bullets over paragraphs.
-
-# Tone
-Informative, clear, and direct. Prioritize actionable feedback that curriculum developers can implement immediately.
-
-# Response Format
+### Output Template
 ```markdown
-## Collection Flag
-[Fully Covered / Partially Covered / Remove Collection]
-
-## Lesson Flags
-- Lesson 1 Title: [Keep as is / Needs revision / Remove]
-- Lesson 2 Title: …
-  (repeat)
-
 ## Coverage Analysis
-- Requirement 1 (quote / paraphrase): Met by Lesson X  
-- Requirement 2: Partially Met — Lessons Y & Z introduce concept but lack application  
-- Requirement 3: Not Met — no lesson
+- Requirement 1: ✔ Met — Lesson X models and practice cover all expectations.  
+- Requirement 2: ◑ Partially Met — Lessons Y & Z introduce concept but lack multi-step applications.  
+- Requirement 3: ✗ Not Met — No lesson addresses student-generated line plots.  
 
-## Missing Elements (if Partially Covered)
-- Requirement 2: Needs multi-step contextual problems using unit fractions.  
-- Requirement 3: Standard calls for student-generated line plots; none provided.
+## Missing Elements
+- Multi-step contextual problems using unit fractions.  
+- Student-created line plots from measurement data.  
 
-## Action Plan
-- **Add** new mini-lesson on multi-step unit-fraction problems in real-world contexts.  
-- **Revise** Lesson Y: insert activity where students create line plots from data.  
-- **Remove** Lesson Z if redundant after additions.
+## Redundancies
+- Lessons 3 & 5 both reteach the same single-step fraction models without added depth.
