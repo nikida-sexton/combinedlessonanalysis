@@ -327,4 +327,4 @@ if generate_analysis:
 
 # Footer
 st.markdown("---")
-st.markdown("Built with Streamlit and Google Gemini API")
+st.markdown("Currently running on Google Gemini API")
